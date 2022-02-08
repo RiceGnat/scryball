@@ -1,0 +1,24 @@
+{
+  "name": "scryball",
+  "version": "0.0.1",
+  "description": "Scryfall Discord bot",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RiceGnat/scryball.git"
+  },
+  "author": "RiceGnat",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/RiceGnat/scryball/issues"
+  },
+  "homepage": "https://github.com/RiceGnat/scryball#readme",
+  "dependencies": {
+    "axios": "^0.25.0",
+    "dotenv": "^16.0.0",
+    "ws": "^8.5.0"
+  }
+}
