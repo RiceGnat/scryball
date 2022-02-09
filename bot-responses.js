@@ -45,10 +45,14 @@ const cardEmbeds = card => {
     }
 };
 
-const parseSymbols = text => (text || '').replace(/\{(.+?)\}/g, (match, p1) => {
-    const symbol = p1.replace(/\//g, '').toLowerCase();
-    return emojis[symbol] || match;
-});
+const parseSymbols = text => (text || '')
+    .replace(/\{1000000\}/g, '{1000000a}{1000000b}{1000000c}{1000000d}')
+    .replace(/\{100\}/g, '{100a}{100b}')
+    .replace(/\{∞\}/g, '{infinity}')
+    .replace(/\{(.+?)\}/g, (match, p1) => {
+        const symbol = p1.replace(/\//g, '').toLowerCase();
+        return emojis[symbol] || match;
+    });
 
 const oracleText = card => `**${card.type_line}**\n${parseSymbols(card.oracle_text).replace(/\(.+?\)/g, '*$&*')}${(card.power !== undefined ? `\n**${`${card.power}/${card.toughness}`.replace(/\*/g, '⋆')}**` : '')}`;
 
