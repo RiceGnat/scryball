@@ -1,4 +1,8 @@
 const discord = require('./discord/api');
+require('./extensions');
+
+const MAX_EMBED_LENGTH = 6000;
+const PRICES_PER_FIELD = 4;
 
 const emojis = {};
 
@@ -23,6 +27,8 @@ const message = (content, embeds) => ({
         content, embeds
     }
 });
+
+const getEmbedLength = embed => [embed.title, embed.description].filter(e => e).map(e => e.length).concat((embed.fields || []).map(({ name, value }) => name.length + value.length)).sum();
 
 const cardEmbeds = card => {
     switch (card.layout) {
@@ -102,6 +108,65 @@ const oracleEmbeds = card => {
     }
 };
 
+const priceEmbeds = (name, printings) => {
+    const fields = Object.values(printings.reduce((o, e) => {
+        let setHash = `${e.set}${e.released_at}`;
+        let key = setHash;
+        let offset = 0;
+        
+        while(o[key] && o[key].versions.length >= PRICES_PER_FIELD) {
+            offset += PRICES_PER_FIELD;
+            key = `${setHash}${offset}`;
+        }
+
+        if (o[key]) o[key].versions.push(e);
+        else o[key] = {
+            name: e.set_name,
+            versions: [e]
+        };
+
+        return o;
+    }, {})).map(set => ({
+        name: set.name,
+        value: set.versions.map(card => `[$${card.prices.usd || card.prices.usd_foil || card.prices.usd_etched || '-'}](${card.purchase_uris.tcgplayer})${(set.versions.length > 1 ? ` #${card.collector_number}` : '')}`).join('\n'),
+        inline: true
+    }));
+
+    const embeds = [];
+    let i = 0;
+    while (i < fields.length) {
+        let embed = {
+            title: `${name}`,
+            description: 'Prices via TCGPlayer',
+            fields: []
+        };
+
+        while (i < fields.length && getEmbedLength(embed) + fields[i].name.length + fields[i].value.length < MAX_EMBED_LENGTH) {
+            embed.fields.push(fields[i]);
+            i++;
+        }
+
+        embeds.push(embed);
+    }
+    return embeds;
+};
+
+const messagesFromEmbeds = embeds => {
+    const messages = [];
+    let i = 0;
+    while (i < embeds.length) {
+        let messageEmbeds = [];
+
+        while (i < embeds.length && messageEmbeds.map(e => getEmbedLength(e)).sum() + getEmbedLength(embeds[i]) < MAX_EMBED_LENGTH) {
+            messageEmbeds.push(embeds[i]);
+            i++;
+        }
+
+        messages.push(message(null, messageEmbeds));
+    }
+    return messages;
+};
+    
 const loadEmoji = async () => {
     const servers = (process.env.EMOJI_SERVERS || '').split(',');
 
@@ -135,5 +200,6 @@ module.exports = {
         }
     }),
     card: card => message(null, cardEmbeds(card)),
-    oracle: card => message(null, oracleEmbeds(card))
+    oracle: card => message(null, oracleEmbeds(card)),
+    price: (name, printings) => messagesFromEmbeds(priceEmbeds(name, printings))
 };

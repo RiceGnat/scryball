@@ -4,6 +4,7 @@ const api = require('./api');
 const token = process.env.BOT_TOKEN;
 const gatewayParams = `?v=${api.version}&encoding=json`;
 
+const followups = {};
 let gateway, commands;
 
 const Session = function(interval) {
@@ -87,7 +88,7 @@ const opcodes = {
 };
 
 const handleMessage = async data => {
-    //console.log(`Received opcode ${data.op}: ${opcodes[data.op]}`);
+    console.log(`Received opcode ${data.op}: ${opcodes[data.op]}`);
 
     switch (data.op) {
         case 10:
@@ -103,7 +104,7 @@ const handleMessage = async data => {
             session.ackHeartbeat();
             break;
         case 0:
-            //console.log(`Received event ${data.s}: ${data.t}`);
+            console.log(`Received event ${data.s}: ${data.t}`);
             session.s = data.s;
             await handleDispatchEvent(data.t, data);
     }
@@ -116,39 +117,100 @@ const handleDispatchEvent = async (event, data) => {
             console.log(`User identified: ${data.d.user.username}#${data.d.user.discriminator}`);
             break;
         case 'INTERACTION_CREATE':
-            let response;
-            const args = commands[data.d.data.name].options.map(({ name }) => ((data.d.data.options || []).find(arg => arg.name === name) || {}).value);
-
             try {
-                switch (data.d.type) {
-                    case 2: // APPLICATION_COMMAND
-                        response = await commands[data.d.data.name].onCommand(...args, data.d);
-                        break;
-                    case 4: // APPLICATION_COMMAND_AUTOCOMPLETE
-                        response = await commands[data.d.data.name].onAutocomplete(...args, data.d);
-                        break;
-                }
+                if (data.d.data.name) await handleApplicationCommand(data.d);
+                else if (data.d.data.custom_id) await handleComponentInteraction(data.d);
             }
             catch (err) {
-                response = {
-                    type: 4,
-                    data: {
-                        content: 'Something broke'
-                    }
-                };
-                console.log(`Error handling command: ${data.d.data.name}`);
+                console.log('Error handling interaction');
                 console.log(err);
             }
-
-            try {
-                await api.postInteractionResponse(data.d.id, data.d.token, response);
-            }
-            catch (err) {
-                console.log(`Error sending interaction response: ${data.d.id}`);
-                console.log(err);
-            }
-
             break;
+    }
+}
+
+const handleApplicationCommand = async interaction => {
+    let response;
+    let deferred = false;
+    const args = commands[interaction.data.name].options.map(({ name }) => ((interaction.data.options || []).find(arg => arg.name === name) || {}).value);
+
+    try {
+        switch (interaction.type) {
+            case 2: // APPLICATION_COMMAND
+                deferred = true;
+                await api.postInteractionResponse(interaction.id, interaction.token, { type: 5 });
+                response = await commands[interaction.data.name].onCommand(...args, interaction);
+                break;
+            case 4: // APPLICATION_COMMAND_AUTOCOMPLETE
+                response = await commands[interaction.data.name].onAutocomplete(...args, interaction);
+                break;
+        }
+
+        if (Array.isArray(response)) {
+            const messages = response.map((message, i) => {
+                const id = `${Date.now()}${Math.random()}`;
+                if (i < response.length - 1) {
+                    followups[id] = {
+                        token: interaction.token,
+                        original: message,
+                        response: response[i + 1].data
+                    };
+
+                    console.log(`Registered followup interaction: ${id}`);
+
+                    message.data.components = [
+                        {
+                            type: 1,
+                            components: [
+                                {
+                                    type: 2,
+                                    label: 'More',
+                                    style: 1,
+                                    custom_id: id
+                                }
+                            ]
+                
+                        }
+                    ];
+                }
+                return message;
+            });
+            response = messages[0];
+        }
+    }
+    catch (err) {
+        response = {
+            type: 4,
+            data: {
+                content: 'Something broke'
+            }
+        };
+        console.log(`Error handling command: ${interaction.data.name}`);
+        console.log(err);
+    }
+
+    if (deferred) await api.patchOriginalInteractionResponse(interaction.token, response.data);
+    else await api.postInteractionResponse(interaction.id, interaction.token, response);
+}
+
+const handleComponentInteraction = async interaction => {
+    const id = interaction.data.custom_id;
+
+    try {
+        if (followups[id]) {
+            followups[id].original.components = [];
+            await api.postFollowupMessage(followups[id].token, followups[id].response);
+            await api.patchFollowupMessage(followups[id].token, interaction.message.id, followups[id].original);
+            delete followups[id];
+            console.log(`Followup consumed: ${id}`);
+        }
+    }
+    catch (err) {
+        console.log(`Error handling component interaction: ${id}`);
+        console.log(err);
+    }
+    finally {
+        await api.postInteractionResponse(interaction.id, interaction.token, { type: 6 });
     }
 }
 

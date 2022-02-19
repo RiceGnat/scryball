@@ -16,3 +16,9 @@ Double-faced cards will display as grouped embeds (will not display correctly on
 /oracle name:[cardname]
 ```
 Requires **external emojis** permission to display correctly.
+
+#### Card prices
+```
+/price name:[cardname]
+```
+Gets TCGPlayer prices as reported by Scryfall.

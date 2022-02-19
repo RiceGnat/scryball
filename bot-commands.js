@@ -24,6 +24,20 @@ const findCard = async (query, oracle) => {
     }
 }
 
+const findPrices = async query => {
+    try {
+        const { name } = await scryfall.named(query);
+        const printings = await scryfall.printings(name);
+        return responses.price(name, printings);
+    }
+    catch (err) {
+        if (err.response) {
+            return responses.message(err.response.data.details);
+        }
+        else throw err;
+    }
+}
+
 const autocompleteCard = async query => {
     try {
         const catalog = await scryfall.autocomplete(query);
@@ -49,6 +63,14 @@ module.exports = [
         description: 'Get a card\'s oracle text',
         options: [options['name']],
         onCommand: query => findCard(query, true),
+        onAutocomplete: autocompleteCard
+    },
+    {
+        name: 'price',
+        type: 1,
+        description: 'Get the market value of a card',
+        options: [options['name']],
+        onCommand: query => findPrices(query),
         onAutocomplete: autocompleteCard
     }
 ];
